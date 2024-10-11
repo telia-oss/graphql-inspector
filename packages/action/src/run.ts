@@ -15,6 +15,32 @@ import { castToBoolean, getInputAsArray, resolveRule } from './utils.js';
 
 const CHECK_NAME = 'GraphQL Inspector';
 
+const AWS_TYPES = `
+scalar AWSDate
+scalar AWSTime
+scalar AWSDateTime
+scalar AWSTimestamp
+scalar AWSEmail
+scalar AWSJSON
+scalar AWSURL
+scalar AWSPhone
+scalar AWSIPAddress
+scalar BigInt
+scalar Double
+directive @aws_subscribe(mutations: [String!]!) on FIELD_DEFINITION
+directive @deprecated(
+  reason: String
+) on FIELD_DEFINITION | INPUT_FIELD_DEFINITION | ENUM | ENUM_VALUE
+directive @aws_auth(cognito_groups: [String!]!) on FIELD_DEFINITION
+directive @aws_api_key on FIELD_DEFINITION | OBJECT
+directive @aws_iam on FIELD_DEFINITION | OBJECT
+directive @aws_oidc on FIELD_DEFINITION | OBJECT
+directive @aws_cognito_user_pools(
+  cognito_groups: [String!]
+) on FIELD_DEFINITION | OBJECT
+directive @aws_lambda on FIELD_DEFINITION | OBJECT
+`;
+
 export async function run() {
   core.info(`GraphQL Inspector started`);
 
@@ -35,6 +61,7 @@ export async function run() {
   }
 
   const useMerge = castToBoolean(core.getInput('experimental_merge'), true);
+  const useAws = castToBoolean(core.getInput('aws'));
   const useAnnotations = castToBoolean(core.getInput('annotations'));
   const failOnBreaking = castToBoolean(core.getInput('fail-on-breaking'));
   const endpoint: string = core.getInput('endpoint');
@@ -127,20 +154,20 @@ export async function run() {
 
   const isNewSchemaUrl = endpoint && schemaPath.startsWith('http');
 
-  const [oldFile, newFile] = await Promise.all([
+  let [oldFile, newFile] = await Promise.all([
     endpoint
       ? printSchemaFromEndpoint(endpoint)
       : loadFile({
-          ref: schemaRef,
-          path: schemaPath,
-        }),
+        ref: schemaRef,
+        path: schemaPath,
+      }),
     isNewSchemaUrl
       ? printSchemaFromEndpoint(schemaPath)
       : loadFile({
-          path: schemaPath,
-          ref,
-          workspace,
-        }),
+        path: schemaPath,
+        ref,
+        workspace,
+      }),
   ]);
 
   core.info('Got both sources');
@@ -158,6 +185,11 @@ export async function run() {
       new: new Source(printSchema(newSchema), schemaPath),
     };
   } else {
+    if (useAws) {
+      oldFile = `${AWS_TYPES}\n${oldFile}`;
+      newFile = `${AWS_TYPES}\n${newFile}`;
+    }
+
     sources = {
       old: new Source(oldFile, endpoint || `${schemaRef}:${schemaPath}`),
       new: new Source(newFile, schemaPath),

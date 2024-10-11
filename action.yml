@@ -12,6 +12,9 @@ inputs:
       For example, "Check Public API" and "Check Internal API".
   annotations:
     description: Use annotation (enabled by default)
+  aws:
+    description: |
+      If the action should include AWS appsync types
   fail-on-breaking:
     description: Fail on breaking changes (enabled by default)
   approve-label:
